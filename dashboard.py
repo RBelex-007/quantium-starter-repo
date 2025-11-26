@@ -14,10 +14,11 @@ df['price'] = df['price'].str.replace('$', '').astype(float)
 df['sales'] = df['price']*df['quantity']
 
 pinkm_df = df[df['product'] == 'pink morsel'].copy()
+pinkm_df_sub = pinkm_df[['date', 'region', 'sales']]
 
 # Create directory if it doesn't exist
 os.makedirs('data/processed', exist_ok=True)
-df.to_csv('data/processed/pinkm_sales_data.csv', index=False)
+pinkm_df_sub.to_csv('data/processed/pinkm_sales_data.csv', index=False)
 
 app = dash.Dash(__name__)
 
