@@ -3,6 +3,7 @@ import dash
 from dash import dcc, html, Input, Output
 import plotly.express as px
 import glob
+import os
 
 data_files = glob.glob('data/daily_sales_data_*.csv')
 dfs = [pd.read_csv(file) for file in data_files]
@@ -13,6 +14,10 @@ df['price'] = df['price'].str.replace('$', '').astype(float)
 df['sales'] = df['price']*df['quantity']
 
 pinkm_df = df[df['product'] == 'pink morsel'].copy()
+
+# Create directory if it doesn't exist
+os.makedirs('data/processed', exist_ok=True)
+df.to_csv('data/processed/pinkm_sales_data.csv', index=False)
 
 app = dash.Dash(__name__)
 
