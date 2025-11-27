@@ -1,6 +1,6 @@
 import pandas as pd
 import dash
-from dash import dcc, html, Input, Output, State
+from dash import dcc, html, Input, Output
 import plotly.express as px
 import glob
 import os
@@ -11,7 +11,7 @@ df = pd.concat(dfs, ignore_index=True)
 
 df['date'] = pd.to_datetime(df['date'])
 df['price'] = df['price'].str.replace('$', '').astype(float)
-df['sales'] = df['price']*df['quantity']
+df['sales'] = df['price'] * df['quantity']
 
 pinkm_df = df[df['product'] == 'pink morsel'].copy()
 pinkm_df_sub = pinkm_df[['sales', 'date', 'region']]
@@ -22,51 +22,96 @@ pinkm_df_sub.to_csv('data/processed/pinkm_sales_data.csv', index=False)
 
 app = dash.Dash(__name__)
 
+# simple button styles
+DEFAULT_BTN_STYLE = {
+    'margin': '4px',
+    'padding': '8px 12px',
+    'border': '1px solid #ccc',
+    'backgroundColor': '#fff',
+    'cursor': 'pointer'
+}
+ACTIVE_BTN_STYLE = {
+    **DEFAULT_BTN_STYLE,
+    'backgroundColor': '#2c7be5',
+    'color': 'white',
+    'border': '1px solid #1a5fb4'
+}
+
 app.layout = html.Div(
     className='container',
     children=[
         html.H1("Pink Morsel Sales Dashboard", className='header'),
-        html.Div(id='view-label', style={'marginBottom': '8px'}),
+        html.Div(id='selection-label', style={'marginBottom': '8px'}),
         html.Div(
             className='card',
             children=[
-                html.Button("Switch view", id='toggle-button', n_clicks=0),
-                dcc.Store(id='view-store', data='date'),
+                html.Div([
+                    html.Button("All", id='btn-all', n_clicks=0, style=DEFAULT_BTN_STYLE),
+                    html.Button("North", id='btn-north', n_clicks=0, style=DEFAULT_BTN_STYLE),
+                    html.Button("East", id='btn-east', n_clicks=0, style=DEFAULT_BTN_STYLE),
+                    html.Button("South", id='btn-south', n_clicks=0, style=DEFAULT_BTN_STYLE),
+                    html.Button("West", id='btn-west', n_clicks=0, style=DEFAULT_BTN_STYLE),
+                ], style={'marginBottom': '12px'}),
                 dcc.Graph(id='sales-graph')
             ]
         )
     ]
 )
 
-# toggle the view state when button clicked
-@app.callback(
-    Output('view-store', 'data'),
-    Input('toggle-button', 'n_clicks'),
-    State('view-store', 'data'),
-    prevent_initial_call=False
-)
-def toggle_view(n_clicks, current_view):
-    # start with 'date' (default). Each click switches view.
-    if n_clicks is None:
-        return current_view
-    return 'region' if current_view == 'date' else 'date'
-
-# update graph based on current view
+# single callback handles which button was clicked and updates graph + button styles + label
 @app.callback(
     Output('sales-graph', 'figure'),
-    Output('view-label', 'children'),
-    Input('view-store', 'data')
+    Output('selection-label', 'children'),
+    Output('btn-all', 'style'),
+    Output('btn-north', 'style'),
+    Output('btn-east', 'style'),
+    Output('btn-south', 'style'),
+    Output('btn-west', 'style'),
+    Input('btn-all', 'n_clicks'),
+    Input('btn-north', 'n_clicks'),
+    Input('btn-east', 'n_clicks'),
+    Input('btn-south', 'n_clicks'),
+    Input('btn-west', 'n_clicks'),
 )
-def update_graph_and_label(view):
-    if view == 'date':
-        sales_by_date = pinkm_df.groupby('date')['sales'].sum().reset_index()
-        fig = px.line(sales_by_date, x='date', y='sales', title='Total Sales of Pink Morsel Over Time')
-        label = "Currently showing: Sales by Date"
+def update_chart(n_all, n_north, n_east, n_south, n_west):
+    # determine which button triggered the callback
+    ctx = dash.callback_context
+    if not ctx.triggered:
+        selected = 'All'
     else:
-        sales_by_region = pinkm_df.groupby('region')['sales'].sum().reset_index()
-        fig = px.bar(sales_by_region, x='region', y='sales', title='Total Sales of Pink Morsel by Region')
-        label = "Currently showing: Sales by Region"
-    return fig, label
+        triggered_id = ctx.triggered[0]['prop_id'].split('.')[0]
+        mapping = {
+            'btn-all': 'All',
+            'btn-north': 'north',
+            'btn-east': 'east',
+            'btn-south': 'south',
+            'btn-west': 'west'
+        }
+        selected = mapping.get(triggered_id, 'All')
+
+    # build figure
+    if selected == 'All':
+        sales = pinkm_df.groupby(['date', 'region'])['sales'].sum().reset_index()
+        fig = px.line(sales.sort_values('date'), x='date', y='sales', color='region',
+                      title='Pink Morsel Sales by Date — All Regions')
+    else:
+        sales = (pinkm_df[pinkm_df['region'] == selected]
+                 .groupby('date')['sales'].sum().reset_index()
+                 .sort_values('date'))
+        fig = px.line(sales, x='date', y='sales',
+                      title=f'Pink Morsel Sales by Date — {selected.capitalize()}')
+
+    # prepare label and button styles
+    label = f"Showing: {selected.capitalize()}"
+    styles = {
+        'All': ACTIVE_BTN_STYLE if selected == 'All' else DEFAULT_BTN_STYLE,
+        'north': ACTIVE_BTN_STYLE if selected == 'north' else DEFAULT_BTN_STYLE,
+        'east': ACTIVE_BTN_STYLE if selected == 'east' else DEFAULT_BTN_STYLE,
+        'south': ACTIVE_BTN_STYLE if selected == 'south' else DEFAULT_BTN_STYLE,
+        'west': ACTIVE_BTN_STYLE if selected == 'west' else DEFAULT_BTN_STYLE,
+    }
+
+    return fig, label, styles['All'], styles['north'], styles['east'], styles['south'], styles['west']
 
 if __name__ == '__main__':
     app.run(debug=True)
