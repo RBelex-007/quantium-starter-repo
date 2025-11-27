@@ -1,6 +1,6 @@
 import pandas as pd
 import dash
-from dash import dcc, html, Input, Output
+from dash import dcc, html, Input, Output, State
 import plotly.express as px
 import glob
 import os
@@ -14,7 +14,7 @@ df['price'] = df['price'].str.replace('$', '').astype(float)
 df['sales'] = df['price']*df['quantity']
 
 pinkm_df = df[df['product'] == 'pink morsel'].copy()
-pinkm_df_sub = pinkm_df[['date', 'region', 'sales']]
+pinkm_df_sub = pinkm_df[['sales', 'date', 'region']]
 
 # Create directory if it doesn't exist
 os.makedirs('data/processed', exist_ok=True)
@@ -22,39 +22,51 @@ pinkm_df_sub.to_csv('data/processed/pinkm_sales_data.csv', index=False)
 
 app = dash.Dash(__name__)
 
-app.layout = html.Div([ 
-    html.H1("Pink Morsel Sales Dashboard"),
-
-    html.Div([
-        html.Div([
-            dcc.Graph(id='sales-by-date'),
-        ], style={'width': '48%', 'display': 'inline-block'}),
-
-        html.Div([
-            dcc.Graph(id='sales-by-region'),
-        ], style={'width': '48%', 'display': 'inline-block', 'float': 'right'}),
-    ])
-])
-
-@app.callback(
-    Output('sales-by-date', 'figure'),
-    Input('sales-by-date', 'id')  # Dummy input to trigger the callback
+app.layout = html.Div(
+    className='container',
+    children=[
+        html.H1("Pink Morsel Sales Dashboard", className='header'),
+        html.Div(id='view-label', style={'marginBottom': '8px'}),
+        html.Div(
+            className='card',
+            children=[
+                html.Button("Switch view", id='toggle-button', n_clicks=0),
+                dcc.Store(id='view-store', data='date'),
+                dcc.Graph(id='sales-graph')
+            ]
+        )
+    ]
 )
 
-def update_sales_by_date(_):
-    sales_by_date = pinkm_df.groupby('date')['sales'].sum().reset_index()
-    fig = px.line(sales_by_date, x='date', y='sales', title='Total Sales of Pink Morsel Over Time')
-    return fig
-
+# toggle the view state when button clicked
 @app.callback(
-    Output('sales-by-region', 'figure'),
-    Input('sales-by-region', 'id')
+    Output('view-store', 'data'),
+    Input('toggle-button', 'n_clicks'),
+    State('view-store', 'data'),
+    prevent_initial_call=False
 )
+def toggle_view(n_clicks, current_view):
+    # start with 'date' (default). Each click switches view.
+    if n_clicks is None:
+        return current_view
+    return 'region' if current_view == 'date' else 'date'
 
-def update_sales_by_region(_):
-    sales_by_region = pinkm_df.groupby('region')['sales'].sum().reset_index()
-    fig = px.bar(sales_by_region, x='region', y='sales', title='Total Sales of Pink Morsel by region')
-    return fig
+# update graph based on current view
+@app.callback(
+    Output('sales-graph', 'figure'),
+    Output('view-label', 'children'),
+    Input('view-store', 'data')
+)
+def update_graph_and_label(view):
+    if view == 'date':
+        sales_by_date = pinkm_df.groupby('date')['sales'].sum().reset_index()
+        fig = px.line(sales_by_date, x='date', y='sales', title='Total Sales of Pink Morsel Over Time')
+        label = "Currently showing: Sales by Date"
+    else:
+        sales_by_region = pinkm_df.groupby('region')['sales'].sum().reset_index()
+        fig = px.bar(sales_by_region, x='region', y='sales', title='Total Sales of Pink Morsel by Region')
+        label = "Currently showing: Sales by Region"
+    return fig, label
 
 if __name__ == '__main__':
-    app.run(debug=True)# Dash app to visualize Pink Morsel sales data
+    app.run(debug=True)
